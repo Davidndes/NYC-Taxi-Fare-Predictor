@@ -1,171 +1,349 @@
 # NYC Taxi Fare Predictor
 
-This is my second machine learning project, building on what I learned from implementing a CNN for handwritten digit classification.
+This is the README for my second ML project - a taxi fare predictor.
 
-## First Pass — Initial Approach
+The goal of this project was to build on what I learned from my first project, a handwritten digit classifier, and apply those concepts to a regression problem. I also wanted to get more comfortable with C++ and understand what PyTorch is actually doing when a trained neural network makes a prediction.
 
-For this second project, I'm going to use what I learned from the digit classifier to build a taxi fare prediction model for NYC taxis.
+## First Pass
 
-I will train the model on publicly available NYC taxi trip data, from which I expect it to learn certain patterns according to time of day, location in the city, distance, weather (if available), and time of year.
+For this second project I'm going to use the learnings from the digit classifier to build a taxi fare prediction model for NYC taxis.
 
-My initial thought is that distance will be the primary feature, since it has a relatively direct relationship with fare prices, while the other conditions will adjust the prediction. For example, a one-mile trip may typically cost around $15, but depending on traffic, time of day, or other conditions, the actual fare could differ in a nonlinear way.
+I will train the model on NYC taxi fare data that is publicly available, from which I expect the model to learn certain patterns according to time of day, surge pricing, location in the city, distance, weather (if available), and time of year.
 
-I will compare the model's performance against a linear regression baseline and explore implementing the model's inference calculations in C++.
+The primary function, I think, will look at distance (since that handles the continuous problem regarding price), adjusted for the other conditions. So, for example, a 1-mile drive may fall in the range of $15, but if it's raining this may scale the price up in a nonlinear way.
+
+I will compare the model's performance to a linear regression baseline.
 
 ### Pseudocode and Open Questions
 
-- Import data from a public source.
-- Clean and organize the data using Python, NumPy, and pandas.
-- Build a neural network using fully connected layers rather than convolutional layers.
-- Train the model and compare its predictions against a linear regression baseline.
+Import data from a public source.
 
-A few questions I had going into this:
+Organize the data into tensors using NumPy and pandas.
 
-In the digit classifier, the 60,000 images were eventually reduced to 10 output neurons, each corresponding to a digit. In this case, the outcome is continuous rather than discrete, so how does that change the output layer and loss function?
+This model will have fully connected layers instead of CNNs, so no kernels. Instead, all the inputs will be available to all neurons in the next layer.
 
-Would the model predict a specific price or use intervals? How would it distinguish between $10.53 and $10.54?
+But how will the model learn? How will compression take place?
 
-Would it make sense to have different neurons responsible for different fare ranges, such as $20, $30, and so on, before estimating a specific price within that range?
+In the CNN example, the 60,000 images were used to train a network whose final layer had 10 neurons corresponding to digit guesses, and a digit was intentionally assigned to each neuron.
 
-And without convolutional filters, how would the model learn useful relationships between the input features?
+In this case, where the outcome is continuous and not discrete, this should change the softmax and loss function used. But how does this matter for the output neurons?
 
----
+Will they guess a specific price or use intervals? How would the model predict $10.54 instead of $10.53, for example?
 
-## Second Pass — Classification vs. Regression
+Could I have a neuron responsible for each region? For example, if prices typically differ on the order of $10, perhaps fares could be grouped into ranges of $20, $30, and so on.
 
-With this project, we're moving from classification to regression, which changes the output layer and loss function but not the fundamental learning process.
+Then, once inside that range, perhaps the model could look at the region with the densest probability and output that as the prediction.
 
-The process is still:
+These were my initial questions before I started working through how regression networks are structured.
 
-**Inputs → Prediction → Calculate loss → Backpropagation → Update weights**
+## Second Pass
 
-The convolutional filters in the digit classifier were useful because the model needed to recognize spatial patterns in images. For the taxi fare predictor, the inputs are numerical features rather than images, so I'm using fully connected layers instead.
+With this project we're moving from classification to regression, which changes the way / methods in which the system will learn, its output layer, the loss function, etc.
 
-The model takes the trip features, passes them through two hidden layers, and produces a prediction using one output neuron.
+The learning process here is fundamentally the same:
 
-I initially thought that a regression model might need multiple output neurons representing different price ranges. However, since the goal is to predict a continuous numerical value, a single output neuron is sufficient.
+Network gets inputs → produces a prediction → calculates how wrong it is based on a loss function → backpropagation computes gradients → optimizer updates the parameters.
 
-The model can predict values such as $10.53 or $10.54 without assigning a separate neuron to each possible fare.
+The convolution filters from the digit classifier were mostly necessary for recognizing spatial patterns in the data.
 
-Another difference is the loss function. In the CNN, I used cross-entropy loss because the model was predicting one of ten discrete classes. For this regression problem, I'm using mean squared error (MSE), which measures the average squared difference between predicted and actual fares.
+So this setup flows from:
 
-The closer the prediction is to the actual fare, the smaller the error. During training, the optimizer adjusts the weights to minimize this loss.
+a) Trip features
 
-The final layer does not use ReLU or softmax. Instead, it produces an affine transformation of the previous hidden layer's outputs, allowing the network to return a continuous value.
+b) Fully connected layers
 
-The hidden layers are called hidden because they sit between the input and output layers. They learn intermediate representations of the input features that are useful for predicting the final fare.
+c) One output neuron
 
----
+Because there is only one output neuron, it is able to output a continuous numerical value.
 
-## Third Pass — Data Preparation and Preliminary Results
+Additionally, cross-entropy loss was used in the CNN because the results were discrete classes, so the algorithm needed to penalize incorrect class predictions. For a regression ML model, a better choice may be mean squared error (MSE), where the closer you are to the correct answer, the smaller the loss will be, and this is what is minimized.
 
-When working with large public datasets, it's necessary to clean the data before training the model.
+So there is only one output neuron, but there can be more at earlier layers. Regardless of the activations they experience, the final neuron will always have a linear or affine representation of the hidden layer outputs, assuming we don't apply another nonlinear activation to the final output.
 
-For this project, I used NYC taxi trip data and selected four input features:
+And they're called hidden layers because they're intermediate? Yes, they're the layers between the input and output.
 
-- Trip distance
-- Pickup hour
-- Pickup day
-- Trip duration
+One thing I understand better now is that the network doesn't need to divide prices into intervals or assign a neuron to every possible fare.
 
-Although I initially considered including weather, location, and other conditions, I decided to start with these four features to keep the project manageable.
+The final neuron can simply calculate:
 
-I also standardized the inputs using scikit-learn's `StandardScaler`.
+`y = Wx + b`
 
-Standardization applies:
+where x represents the outputs of the preceding hidden layer, W contains the learned weights, and b is the bias.
 
-```text
-z = (x - mean) / scale
-```
+The result can be any real number, so predicting $10.54 instead of $10.53 doesn't require another neuron. It just requires the learned parameters to produce a slightly different output.
 
-Where:
+## Third Pass
 
-- `x` is the original feature value.
-- `mean` is the mean of that feature in the training dataset.
-- `scale` is the scale calculated by `StandardScaler`.
-- `z` is the standardized feature.
+For this project I used publicly available NYC yellow taxi trip data from January 2025. I loaded the data into DuckDB and used SQL to explore it and pull a training set. I then cleaned it in pandas and selected four input features. Initially, I had considered using features like weather, location, and time of year, but decided to keep the first version relatively simple.
 
-This means that `z` represents how far above or below the mean a particular observation falls, measured relative to the feature's scale.
+The cleaning criteria were:
 
-Since the network was trained on standardized inputs, any new observations must undergo the same transformation before being passed through the model.
+- Trip distance greater than 0 and less than or equal to 50 miles.
+- Fare amount greater than $0 and less than or equal to $200.
+- Trip duration greater than 0 and less than or equal to 180 minutes.
+
+After applying these conditions, I sampled 100,000 observations from the cleaned dataset.
+
+### Input Features
+
+The model uses four inputs:
+
+1. Trip distance
+2. Pickup hour
+3. Pickup day of the week
+4. Trip duration in minutes
+
+The target variable is `fare_amount`, rather than the total amount paid by the passenger.
+
+I should also note that trip duration is only known after a trip has been completed. Therefore, this version is better understood as estimating the fare for a completed trip rather than predicting the price of a future trip before it begins.
+
+### Model Architecture
+
+The PyTorch model is a fully connected neural network with the following architecture:
+
+**4 → 16 → 8 → 1**
+
+The four inputs are passed through two hidden layers containing 16 and 8 neurons, respectively, before reaching the final output neuron.
+
+I used ReLU activation functions for the hidden layers and no activation function for the final layer.
+
+The loss function is mean squared error, and the optimizer is Adam with a learning rate of 0.01.
+
+I trained the network for 1,000 iterations using the entire training dataset in each iteration.
+
+### Standardizing the Inputs
+
+The PyTorch model was trained on standardized features using sklearn's `StandardScaler`, which applies:
+
+`z_i = (x_i - mu_i) / sigma_i`
+
+where:
+
+- `x_i` is the original feature.
+- `mu_i` is the mean of that feature in the training dataset.
+- `sigma_i` is the standard deviation calculated by StandardScaler.
+- `z_i` is the standardized feature.
+
+This means z represents how far above or below the mean a certain observation is, measured in standard deviations.
+
+This was important because the four features have different numerical ranges. For example, pickup hour ranges from 0 to 23, while trip duration can be much larger.
+
+The standardizer was fitted on the training data and then used to transform both the training and test inputs. This is important because using the test data to calculate the means and standard deviations would introduce information from the test set into the training process.
 
 ### Preliminary Results
 
-The project has already started to demonstrate that a relatively small neural network can outperform a linear regression baseline on the selected taxi-trip dataset.
+The project has already started to demonstrate that a small neural network (NN) can outperform a linear regression (LR) baseline on a selected taxi-trip dataset.
 
 | Model | Test MSE | Test RMSE |
 |---|---:|---:|
-| Linear Regression | 24.9231 | $4.99 |
-| Neural Network | 19.6710 | $4.44 |
+| Linear Regression | 24.9231 | 4.99 |
+| Neural Network | 19.6710 | 4.44 |
 
-This represents approximately an **11% reduction in RMSE** compared with linear regression.
+This represents approximately an **11% reduction in RMSE**.
 
-The neural network consists of three fully connected layers:
+RMSE is useful here because it is measured in the same units as the target variable, so an RMSE of 4.44 means that the scale of the model's prediction error is approximately $4.44.
 
-```text
-Input (4) -> Hidden Layer (16) -> Hidden Layer (8) -> Output (1)
-```
+The results suggest that there are nonlinear relationships in the data that the neural network is able to capture better than the linear regression baseline.
 
-The first two layers use ReLU activation functions, while the final layer produces the predicted fare.
+However, this doesn't necessarily mean that the neural network will always outperform linear regression. It tells me that for this particular dataset, split, and training run, the neural network performed better.
 
-The model was trained in PyTorch using MSE loss and the Adam optimizer.
+The linear regression baseline was implemented using sklearn's `LinearRegression`.
 
-These are preliminary results, and I will confirm the final model's performance before completing the project.
+## Fourth Pass - Implementing Inference in C++
 
----
+For this next part of the project I wanted to see if I could reproduce the predictions from my PyTorch model using C++.
 
-## Fourth Pass — Implementing Inference in C++
+The idea was to take the weights and biases that the network had already learned and use them to manually calculate the outputs rather than relying on PyTorch to do this for me.
 
-After training the model in PyTorch, I wanted to better understand how the network actually produces a prediction and whether implementing these calculations directly in C++ could improve computational performance.
+I thought this would be a useful way to better understand what was happening inside the network after training.
 
-Rather than training another model in C++, I exported the weights and biases from the trained PyTorch model and used them to reproduce the forward pass.
+### Exporting the Model Parameters
 
-The C++ implementation consists of functions to load the saved parameters, standardize the input features, perform matrix-vector multiplication, and apply ReLU.
+To do this I exported the weights and biases for each layer along with the means and scales used to standardize the inputs.
 
-Each layer takes the outputs from the previous layer, multiplies them by the corresponding weights, and adds the biases. ReLU is then applied after the first two layers, with the final layer returning a single fare prediction.
+This last part was important because the network was trained on standardized features. Passing in the original values without transforming them first would produce different predictions.
 
-I also exported the means and scales from `StandardScaler` so that the C++ implementation could apply the same preprocessing as PyTorch.
+The forward pass itself is essentially a series of matrix multiplications followed by the addition of a bias and an activation function.
+
+For each layer I calculated:
+
+`z = Wx + b`
+
+and then applied ReLU to the outputs of the hidden layers:
+
+`ReLU(z) = max(0, z)`
+
+The final layer doesn't use ReLU because we're predicting a continuous fare.
+
+So the process in C++ was:
+
+1. Read the exported weights, biases, and scaling parameters from CSV files.
+2. Standardize the input features.
+3. Calculate the first layer's output and apply ReLU.
+4. Repeat for the second hidden layer.
+5. Calculate the final prediction using the output layer.
+
+What I found interesting here was that once the network has been trained, producing a prediction doesn't require backpropagation, an optimizer, or a loss function.
+
+Those are necessary for learning the parameters. Once they're learned, inference is just a sequence of numerical operations using those parameters.
 
 ### Comparing C++ and PyTorch Predictions
 
-Before comparing computational performance, I needed to confirm that the C++ implementation was producing the same predictions as PyTorch.
+Initially I tested this on a single observation to see if the two implementations agreed.
 
-To do this, I trained the model in Python, exported its parameters, and passed the same sample taxi trip through both implementations.
+PyTorch prediction: `24.607271194458008`
 
-The sample input was:
+C++ prediction: `24.607270733841279`
 
-- Distance: 5 miles
-- Pickup hour: 14
-- Pickup day: 2
-- Duration: 20 minutes
+The difference was approximately `4.61e-7`, which was encouraging.
 
-The results were:
+But this was only one observation, so I wanted to see whether the agreement would hold across the entire test dataset.
 
-| Implementation | Predicted Fare |
+I exported the 20,000 test observations and their corresponding PyTorch predictions to CSV files and modified my C++ code to loop through the observations, standardize the features, calculate the outputs, and store each prediction.
+
+I then exported the C++ predictions to another CSV file.
+
+With both sets of predictions available, I calculated the maximum absolute difference and mean absolute difference between them.
+
+| Metric | Result |
 |---|---:|
-| PyTorch | $24.607271194458008 |
-| C++ | $24.607270733841279 |
+| Observations compared | 20,000 |
+| Maximum absolute difference | 1.45422e-05 |
+| Mean absolute difference | 9.64038e-07 |
 
-The absolute difference was calculated as:
+So across all 20,000 observations the largest difference between the two implementations was approximately $0.0000145, and the average difference was less than one-millionth of a dollar.
 
-```text
-Absolute difference = abs(PyTorch prediction - C++ prediction)
+I suspect some of the difference comes from numerical precision since PyTorch uses `float32` while I used `double` in C++, although I haven't tested this directly.
 
-Absolute difference = 0.0000004606
-```
+The important result here is that the two implementations produce almost identical predictions across the test dataset.
 
-The two implementations produced nearly identical predictions, suggesting that the C++ forward pass is correctly reproducing the calculations performed by PyTorch.
+## Reproducing the Project
 
-The small difference may be explained by numerical precision. PyTorch uses 32-bit floating-point numbers by default, while my C++ implementation currently uses `double`, which generally provides 64-bit precision.
+The project has two main parts:
 
-This is only an initial validation using one observation. I still need to compare predictions across a larger sample to determine the maximum difference between the implementations.
+1. Training and evaluating the neural network in Python.
+2. Reproducing the trained network's predictions in C++.
 
-### Next Steps
+### Requirements
 
-The next stage of the project will focus on testing the reliability and computational performance of the C++ implementation.
+Python libraries:
 
-I plan to compare inference times between C++ and PyTorch, investigate whether parallelizing the matrix-vector operations using OpenMP improves performance, and explore how using `float` versus `double` affects numerical accuracy and runtime.
+- PyTorch
+- NumPy
+- pandas
+- scikit-learn
+- DuckDB
 
-I also want to examine where the model makes its largest prediction errors and whether those errors are concentrated among certain types of taxi trips.
+C++ requirements:
 
-These experiments should help me better understand both the predictive limitations of the model and the tradeoffs involved in implementing neural network inference at a lower level.
+- A C++ compiler
+- C++ standard library
+
+### 1. Download the Dataset
+
+The data comes from the NYC Taxi & Limousine Commission's publicly available trip records.
+
+Dataset page: NYC TLC Trip Record Data
+
+Download the January 2025 yellow taxi trip data in Parquet format.
+
+The Python script currently uses a local absolute path to the dataset, so this must be updated to point to the downloaded file.
+
+### 2. Run the Python Implementation
+
+Python script: `NYCTaxiFarePredictor.py`
+
+The script:
+
+1. Loads and inspects the dataset using DuckDB.
+2. Applies the cleaning criteria described above.
+3. Samples 100,000 observations.
+4. Constructs the four input features and target variable.
+5. Splits the observations into training and test sets.
+6. Standardizes the inputs.
+7. Trains the neural network.
+8. Evaluates it against a linear regression baseline.
+9. Saves the trained network and exports its parameters.
+10. Exports the test observations and PyTorch predictions for comparison with C++.
+
+The training/test split uses `test_size=0.2` and `random_state=42`.
+
+The trained PyTorch model is saved as:
+
+`taxi_model.pth`
+
+### 3. Exported Files
+
+The Python script exports the following files:
+
+| File | Contents |
+|---|---|
+| `firstLayer_weight.csv` | First layer weights |
+| `firstLayer_bias.csv` | First layer biases |
+| `secondLayer_weight.csv` | Second layer weights |
+| `secondLayer_bias.csv` | Second layer biases |
+| `LastLayer_weight.csv` | Output layer weights |
+| `LastLayer_bias.csv` | Output layer biases |
+| `standardizer_mean.csv` | Feature means |
+| `standardizer_scale.csv` | Feature scaling values |
+| `xtestvalues.csv` | Unstandardized test inputs |
+| `python_predictions.csv` | PyTorch predictions |
+
+These files are then read by the C++ implementation.
+
+The order of the four features must remain the same:
+
+`Distance, PickupHour, PickupDay, Duration_Minutes`
+
+Changing this order would produce incorrect predictions because the learned weights correspond to specific input features.
+
+### 4. Run the C++ Implementation
+
+The program expects the exported CSV files to be available in its working directory.
+
+It loads the weights, biases, and standardization parameters, then performs the forward pass for each observation in `xtestvalues.csv`.
+
+The resulting predictions are saved to:
+
+`cpp_predictions.csv`
+
+The program then compares those predictions against `python_predictions.csv` and prints the maximum and mean absolute differences.
+
+### 5. Reproducing the Results
+
+The original experiment used:
+
+| Setting | Value |
+|---|---|
+| Dataset | January 2025 yellow taxi trips |
+| Sample size | 100,000 |
+| Training proportion | 80% |
+| Test proportion | 20% |
+| Train/test random state | 42 |
+| Neural network | 4 → 16 → 8 → 1 |
+| Hidden activation | ReLU |
+| Loss function | MSE |
+| Optimizer | Adam |
+| Learning rate | 0.01 |
+| Training iterations | 1,000 |
+
+The dataset sampling and PyTorch parameter initialization were not explicitly seeded in the original implementation.
+
+Therefore, rerunning the training script may produce slightly different model parameters and evaluation results, even when using the same dataset.
+
+The reported results correspond to the original experiment.
+
+To reproduce the C++ comparison, the exported parameters and PyTorch predictions must come from the same trained model.
+
+## Limitations and Next Steps
+
+There are a few limitations worth acknowledging.
+
+Firstly, the model only uses four features. I originally wanted to incorporate weather, location, and seasonal effects, but these weren't included in the final implementation.
+
+Secondly, the model uses trip duration, which is only known after the trip has taken place. If I wanted to develop this into a model that predicts fares before a trip begins, I'd need to replace this with information available before pickup, potentially including an estimated duration.
+
+Thirdly, the experiment uses a training and test split without a separate validation set. A more developed version could use a validation set to compare model configurations before evaluating the final model on the test data.
+
+Finally, I haven't investigated how the model performs across different types of trips. For example, it might be interesting to see whether prediction errors are larger for short trips, long trips, or particular times of day.
+
